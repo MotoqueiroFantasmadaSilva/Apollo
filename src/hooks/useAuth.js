@@ -7,42 +7,52 @@ export function useAuth() {
   const [loading, setLoading] = useState(true)
   const [authError, setAuthError] = useState(null)
 
+  // Effect 1: manage session via onAuthStateChange only (fires INITIAL_SESSION on mount)
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       setSession(session)
-      if (session) {
-        fetchProfile(session.user.id)
-      } else {
-        setLoading(false)
-      }
-    })
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      setSession(session)
-      if (session) {
-        await fetchProfile(session.user.id)
-      } else {
+      if (!session) {
         setProfile(null)
         setLoading(false)
       }
     })
-
     return () => subscription.unsubscribe()
   }, [])
 
-  async function fetchProfile(userId) {
+  // Effect 2: fetch profile whenever the logged-in user changes
+  useEffect(() => {
+    if (!session?.user?.id) return
+
+    let cancelled = false
+
+    async function loadProfile() {
+      try {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', session.user.id)
+          .single()
+        if (cancelled) return
+        if (!error && data) setProfile(data)
+      } catch (_) {
+        // network or unexpected error — fall through to finally
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+
+    loadProfile()
+    return () => { cancelled = true }
+  }, [session?.user?.id])
+
+  async function refreshProfile() {
+    if (!session?.user?.id) return
     const { data, error } = await supabase
       .from('profiles')
       .select('*')
-      .eq('id', userId)
+      .eq('id', session.user.id)
       .single()
-    if (!error) setProfile(data)
-    setLoading(false)
-  }
-
-  async function refreshProfile() {
-    if (!session) return
-    await fetchProfile(session.user.id)
+    if (!error && data) setProfile(data)
   }
 
   async function signIn(email, password) {
