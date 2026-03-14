@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import apolloLogo from "./assets/APOLLOLOGO.png";
 import { useAuth } from "./hooks/useAuth";
 import { useWorkouts } from "./hooks/useWorkouts";
 import { useRoutines } from "./hooks/useRoutines";
@@ -82,30 +83,7 @@ const Icon = ({ name, size = 18 }) => {
 // ─── APOLLO LOGO ─────────────────────────────────────────────────────────────
 
 const ApolloLogo = ({ size = 40 }) => (
-  <svg width={size} height={size} viewBox="0 0 80 80">
-    <defs>
-      <radialGradient id="sunGrad" cx="50%" cy="50%" r="50%">
-        <stop offset="0%" stopColor="#ffd700" />
-        <stop offset="60%" stopColor="#ff8c00" />
-        <stop offset="100%" stopColor="#aa00ff" />
-      </radialGradient>
-      <filter id="glow">
-        <feGaussianBlur stdDeviation="2" result="blur" />
-        <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
-      </filter>
-    </defs>
-    {[0,30,60,90,120,150,180,210,240,270,300,330].map((angle, i) => (
-      <line key={i} x1="40" y1="40"
-        x2={40 + Math.cos((angle * Math.PI) / 180) * 38}
-        y2={40 + Math.sin((angle * Math.PI) / 180) * 38}
-        stroke={i % 2 === 0 ? "#ffd700" : "#aa00ff"} strokeWidth={i % 2 === 0 ? "1.5" : "0.8"} strokeLinecap="round" opacity="0.7" filter="url(#glow)"
-      />
-    ))}
-    <circle cx="40" cy="40" r="24" fill="none" stroke="#ffd700" strokeWidth="1.5" opacity="0.4" />
-    <circle cx="40" cy="40" r="18" fill="none" stroke="#aa00ff" strokeWidth="0.8" opacity="0.6" />
-    <circle cx="40" cy="40" r="12" fill="url(#sunGrad)" filter="url(#glow)" />
-    <text x="40" y="45" textAnchor="middle" fill="#0b0b0f" fontSize="13" fontWeight="900" fontFamily="serif">A</text>
-  </svg>
+  <img src={apolloLogo} alt="Apollo Logo" width={size} height={size} style={{ objectFit: "contain" }} />
 );
 
 // ─── COMPONENTS ──────────────────────────────────────────────────────────────
