@@ -5,6 +5,8 @@ import { useWorkouts } from "./hooks/useWorkouts";
 import { useRoutines } from "./hooks/useRoutines";
 import { useCommunityRoutines } from "./hooks/useCommunityRoutines";
 import { useLeaderboard } from "./hooks/useLeaderboard";
+import { useFollows } from "./hooks/useFollows";
+import { usePublicProfile } from "./hooks/usePublicProfile";
 import { supabase } from "./lib/supabase";
 import "./styles/apollo.css";
 
@@ -70,6 +72,7 @@ const Icon = ({ name, size = 18 }) => {
     share: "M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8M16 6l-4-4-4 4M12 2v13",
     zap: "M13 2L3 14h9l-1 8 10-12h-9l1-8z",
     user: "M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2M12 11a4 4 0 100-8 4 4 0 000 8z",
+    userPlus: "M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M12 11v6M12 8V3M12 8a3 3 0 100-6 3 3 0 000 6zM19 8v6M22 11v-2",
     clock: "M12 22a10 10 0 100-20 10 10 0 000 20zM12 6v6l4 2",
     weight: "M12 2a2 2 0 012 2v1h3a1 1 0 011 1v2a1 1 0 01-1 1h-1v8a2 2 0 01-2 2H8a2 2 0 01-2-2V9H5a1 1 0 01-1-1V6a1 1 0 011-1h3V4a2 2 0 012-2z",
   };
@@ -930,13 +933,17 @@ function CommunityRoutines({ userId, exercises }) {
   );
 }
 
-function Leaderboards({ session }) {
+function Leaderboards({ session, onViewProfile }) {
   const { leaders, loading, tab, setTab } = useLeaderboard();
 
   const trophyColor = (i) => i === 0 ? "var(--gold)" : i === 1 ? "var(--text2)" : i === 2 ? "#cd7f32" : "var(--text3)";
   const myId = session?.user?.id;
 
   const getValue = (u) => tab === "ap" ? u.ap_points?.toLocaleString() : tab === "streak" ? `${u.streak}d` : u.routines_created;
+
+  const handleRowClick = (userId) => {
+    if (userId && onViewProfile) onViewProfile(userId);
+  };
 
   if (loading) return <div style={{ color: "var(--text2)", padding: 20 }}>Loading leaderboard...</div>;
 
@@ -952,12 +959,12 @@ function Leaderboards({ session }) {
         {leaders.slice(0,3).map((u, i) => {
           const rank = RANKS.find(r => r.name === u.rank_name);
           return (
-            <div key={u.id} className="card" style={{ textAlign: "center", border: i === 0 ? "1px solid rgba(255,215,0,0.4)" : "1px solid var(--border)", transform: i === 0 ? "scale(1.04)" : "scale(1)" }}>
+            <div key={u.id} className="card" style={{ textAlign: "center", border: i === 0 ? "1px solid rgba(255,215,0,0.4)" : "1px solid var(--border)", transform: i === 0 ? "scale(1.04)" : "scale(1)", cursor: "pointer" }} onClick={() => handleRowClick(u.id)} role="button" tabIndex={0} onKeyDown={e => e.key === "Enter" && handleRowClick(u.id)}>
               <div style={{ fontSize: 28, marginBottom: 8 }}>
                 {i === 0 ? "🥇" : i === 1 ? "🥈" : "🥉"}
               </div>
               <div style={{ width: 48, height: 48, borderRadius: "50%", background: `linear-gradient(135deg, ${rank?.color || "#8b5cf6"}, #3b82f6)`, margin: "0 auto 10px", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 18, color: "white" }}>
-                {u.username[0]}
+                {u.username?.[0]}
               </div>
               <div style={{ fontFamily: "'Rajdhani', sans-serif", fontWeight: 700, fontSize: 16, color: "var(--text)" }}>{u.username}</div>
               <div style={{ marginTop: 4 }}><RankBadge rankName={u.rank_name} /></div>
@@ -980,7 +987,7 @@ function Leaderboards({ session }) {
             </thead>
             <tbody>
               {leaders.map((u, i) => (
-                <tr key={u.id} style={{ background: u.id === myId ? "rgba(139,92,246,0.08)" : undefined }}>
+                <tr key={u.id} style={{ background: u.id === myId ? "rgba(139,92,246,0.08)" : undefined, cursor: "pointer" }} onClick={() => handleRowClick(u.id)} role="button" tabIndex={0} onKeyDown={e => e.key === "Enter" && handleRowClick(u.id)}>
                   <td style={{ fontFamily: "'Orbitron', sans-serif", fontSize: 13, color: trophyColor(i) }}>#{i+1}</td>
                   <td>
                     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -1002,7 +1009,151 @@ function Leaderboards({ session }) {
   );
 }
 
-function ProfilePage({ profile }) {
+function UserProfilePage({ viewedUserId, currentUserId, exercises, onBack }) {
+  const { profile, loading: profileLoading } = usePublicProfile(viewedUserId);
+  const { workouts, loading: workoutsLoading } = useWorkouts(viewedUserId);
+  const { routines, loading: routinesLoading } = useRoutines(viewedUserId);
+  const { isFollowing, follow, unfollow, loading: followsLoading } = useFollows(currentUserId);
+  const [followBusy, setFollowBusy] = useState(false);
+
+  const handleFollowToggle = async () => {
+    if (followBusy || !currentUserId || viewedUserId === currentUserId) return;
+    setFollowBusy(true);
+    if (isFollowing(viewedUserId)) await unfollow(viewedUserId);
+    else await follow(viewedUserId);
+    setFollowBusy(false);
+  };
+
+  if (profileLoading && !profile) return <div style={{ color: "var(--text2)", padding: 20 }}>Loading profile...</div>;
+  if (!profile) return <div style={{ color: "var(--text2)", padding: 20 }}>Profile not found.</div>;
+
+  const ap = profile.ap_points || 0;
+  const rank = getRankInfo(ap);
+  const joinDate = profile.join_date ? new Date(profile.join_date).toLocaleDateString("en-US", { month: "short", year: "numeric" }) : "";
+  const prs = profile.prs || {};
+  const isOwnProfile = currentUserId === viewedUserId;
+
+  return (
+    <div>
+      <button className="btn btn-outline btn-sm mb-20" onClick={onBack}><span style={{ display: "inline-block", transform: "rotate(-90deg)", marginRight: 4 }}><Icon name="arrow" size={14} /></span> Back to My Profile</button>
+      <div className="card mb-20" style={{ background: "linear-gradient(135deg, rgba(170,0,255,0.15), rgba(59,130,246,0.1))", border: "1px solid rgba(170,0,255,0.3)", padding: "32px 24px" }}>
+        <div className="flex gap-20 items-center justify-between" style={{ flexWrap: "wrap" }}>
+          <div className="flex gap-20 items-center" style={{ flexWrap: "wrap" }}>
+            <div style={{ width: 80, height: 80, borderRadius: "50%", background: `linear-gradient(135deg, ${rank.color}, #3b82f6)`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 32, fontWeight: 900, color: "white", flexShrink: 0, boxShadow: `0 0 30px ${rank.glow}` }}>
+              {profile.username?.[0]}
+            </div>
+            <div>
+              <h2 style={{ fontFamily: "'Orbitron', sans-serif", fontSize: 24, fontWeight: 900 }}>{profile.username}</h2>
+              <div className="flex gap-8 items-center mt-4 flex-wrap">
+                <RankBadge rankName={rank.name} />
+                <span style={{ fontSize: 13, color: "var(--text2)" }}>Joined {joinDate}</span>
+              </div>
+              <div className="mt-12">
+                <div className="flex justify-between mb-4">
+                  <span style={{ fontSize: 12, color: "var(--text3)" }}>{rank.name} — {ap.toLocaleString()} AP</span>
+                </div>
+                <div className="progress-wrap" style={{ width: 200 }}>
+                  <div className="progress-fill" style={{ width: `${getRankProgress(ap)}%`, background: `linear-gradient(90deg, ${rank.color}, ${rank.color}88)`, boxShadow: `0 0 10px ${rank.glow}` }} />
+                </div>
+              </div>
+            </div>
+          </div>
+          {!isOwnProfile && currentUserId && (
+            <button className="btn btn-gold" onClick={handleFollowToggle} disabled={followBusy || followsLoading}>
+              <Icon name="userPlus" size={16} /> {isFollowing(viewedUserId) ? "Unfollow" : "Follow"}
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className="grid-4 mb-20">
+        {[
+          { label: "Workouts", value: profile.total_workouts || 0, icon: "dumbbell", color: "var(--purple)" },
+          { label: "AP Earned", value: ap.toLocaleString(), icon: "bolt", color: "var(--gold)" },
+          { label: "Streak", value: `${profile.streak || 0}d`, icon: "fire", color: "#ff8c00" },
+          { label: "Routines", value: profile.routines_created || 0, icon: "book", color: "var(--cyan)" },
+        ].map((s, i) => (
+          <div key={i} className="card" style={{ textAlign: "center" }}>
+            <span style={{ color: s.color }}><Icon name={s.icon} size={24} /></span>
+            <div style={{ fontFamily: "'Orbitron', sans-serif", fontSize: 22, fontWeight: 900, color: s.color, margin: "8px 0 4px" }}>{s.value}</div>
+            <div style={{ fontSize: 12, color: "var(--text3)" }}>{s.label}</div>
+          </div>
+        ))}
+      </div>
+
+      <div className="grid-2 mb-20">
+        <div className="card">
+          <div className="card-title">PERSONAL RECORDS</div>
+          {Object.keys(prs).length === 0 && <div style={{ color: "var(--text3)", fontSize: 13 }}>No PRs yet.</div>}
+          {Object.entries(prs).map(([ex, pr]) => (
+            <div key={ex} className="stat-row">
+              <span style={{ fontSize: 13 }}>{ex}</span>
+              <span style={{ fontFamily: "'Orbitron', sans-serif", fontSize: 13, fontWeight: 700, color: "var(--gold)" }}>{pr}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="card mb-20">
+        <div className="card-title">COMPLETED WORKOUTS</div>
+        {workoutsLoading && <div style={{ color: "var(--text3)", fontSize: 13 }}>Loading...</div>}
+        {!workoutsLoading && (!workouts || workouts.length === 0) && <div style={{ color: "var(--text3)", fontSize: 13 }}>No workouts yet.</div>}
+        {!workoutsLoading && workouts && workouts.length > 0 && (
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Date</th>
+                  <th>AP</th>
+                  <th>Volume</th>
+                </tr>
+              </thead>
+              <tbody>
+                {workouts.slice(0, 15).map(w => (
+                  <tr key={w.id}>
+                    <td style={{ fontWeight: 600 }}>{w.name || "Workout"}</td>
+                    <td style={{ color: "var(--text2)", fontSize: 13 }}>{w.finished_at ? new Date(w.finished_at).toLocaleDateString() : "—"}</td>
+                    <td style={{ color: "var(--gold)", fontWeight: 700 }}>{w.ap_earned ?? "—"}</td>
+                    <td style={{ color: "var(--text2)" }}>{w.total_volume ? Number(w.total_volume).toLocaleString() : "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      <div className="card">
+        <div className="card-title">SAVED ROUTINES</div>
+        {routinesLoading && <div style={{ color: "var(--text3)", fontSize: 13 }}>Loading...</div>}
+        {!routinesLoading && (!routines || routines.length === 0) && <div style={{ color: "var(--text3)", fontSize: 13 }}>No routines yet.</div>}
+        {!routinesLoading && routines && routines.length > 0 && (
+          <div className="grid-2" style={{ marginTop: 12 }}>
+            {routines.map(r => {
+              const exList = (r.exercises || []).map(e => e.exercise_name || e.name).filter(Boolean);
+              return (
+                <div key={r.id} className="routine-card" style={{ cursor: "default" }}>
+                  <div className="flex justify-between items-center mb-8">
+                    <h3 style={{ fontFamily: "'Rajdhani', sans-serif", fontWeight: 700, fontSize: 18 }}>{r.name}</h3>
+                    {r.is_public && <span className="badge badge-green"><Icon name="share" size={10} /> Public</span>}
+                  </div>
+                  <p style={{ fontSize: 13, color: "var(--text2)", marginBottom: 12 }}>{r.description}</p>
+                  <div className="flex gap-8" style={{ flexWrap: "wrap" }}>
+                    {exList.slice(0, 5).map(name => <span key={name} className="badge badge-purple">{name}</span>)}
+                    {exList.length > 5 && <span className="badge" style={{ background: "var(--border)", color: "var(--text3)" }}>+{exList.length - 5}</span>}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ProfilePage({ profile, currentUserId, onViewUserProfile }) {
   const ap = profile?.ap_points || 0;
   const rank = getRankInfo(ap);
   const progress = getRankProgress(ap);
@@ -1010,6 +1161,20 @@ function ProfilePage({ profile }) {
   const prs = profile?.prs || {};
   const badges = profile?.badges || [];
   const joinDate = profile?.join_date ? new Date(profile.join_date).toLocaleDateString("en-US", { month: "short", year: "numeric" }) : "";
+  const { followerIds, followingIds, followersCount, followingCount, loading: followsLoading } = useFollows(currentUserId);
+  const [followerProfiles, setFollowerProfiles] = useState([]);
+  const [followingProfiles, setFollowingProfiles] = useState([]);
+
+  useEffect(() => {
+    if (!currentUserId || (followerIds.size === 0 && followingIds.size === 0)) return;
+    const ids = [...new Set([...followerIds, ...followingIds])];
+    if (ids.length === 0) return;
+    supabase.from("profiles").select("id, username").in("id", ids).then(({ data }) => {
+      if (!data) return;
+      setFollowerProfiles(data.filter(p => followerIds.has(p.id)));
+      setFollowingProfiles(data.filter(p => followingIds.has(p.id)));
+    });
+  }, [currentUserId, followerIds, followingIds]);
 
   return (
     <div>
@@ -1050,6 +1215,36 @@ function ProfilePage({ profile }) {
             <div style={{ fontSize: 12, color: "var(--text3)" }}>{s.label}</div>
           </div>
         ))}
+      </div>
+
+      <div className="card mb-20">
+        <div className="card-title">FOLLOWERS & FOLLOWING</div>
+        {!followsLoading && (
+          <div className="grid-2" style={{ gap: 24 }}>
+            <div>
+              <div style={{ fontFamily: "'Orbitron', sans-serif", fontSize: 14, color: "var(--cyan)", marginBottom: 8 }}>{followersCount} Followers</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                {followerProfiles.length === 0 && <span style={{ color: "var(--text3)", fontSize: 13 }}>No followers yet.</span>}
+                {followerProfiles.map(p => (
+                  <button key={p.id} type="button" className="btn btn-outline btn-sm" onClick={() => onViewUserProfile && onViewUserProfile(p.id)} style={{ cursor: "pointer" }}>
+                    <Icon name="user" size={12} /> {p.username || "Unknown"}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <div style={{ fontFamily: "'Orbitron', sans-serif", fontSize: 14, color: "var(--cyan)", marginBottom: 8 }}>{followingCount} Following</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                {followingProfiles.length === 0 && <span style={{ color: "var(--text3)", fontSize: 13 }}>Not following anyone yet.</span>}
+                {followingProfiles.map(p => (
+                  <button key={p.id} type="button" className="btn btn-outline btn-sm" onClick={() => onViewUserProfile && onViewUserProfile(p.id)} style={{ cursor: "pointer" }}>
+                    <Icon name="user" size={12} /> {p.username || "Unknown"}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="grid-2 mb-20">
@@ -1120,11 +1315,18 @@ export default function App() {
   const { session, profile, loading, authError, signIn, signUp, signOut, refreshProfile } = useAuth();
   const [authScreen, setAuthScreen] = useState("landing"); // landing | login | register
   const [page, setPage] = useState("dashboard");
+  const [viewedProfileUserId, setViewedProfileUserId] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [toast, setToast] = useState(null);
   const [workoutPhase, setWorkoutPhase] = useState("select");
   const [fabHover, setFabHover] = useState(false);
   const [exercises, setExercises] = useState([]);
+
+  const handleViewUserProfile = (userId) => {
+    setViewedProfileUserId(userId);
+    setPage("profile");
+  };
+  const handleBackToMyProfile = () => setViewedProfileUserId(null);
 
   // Fetch exercises once on mount (public table, no auth needed)
   useEffect(() => {
@@ -1189,7 +1391,7 @@ export default function App() {
             </div>
           ))}
           <span className="nav-section" style={{ marginTop: 8 }}>ACCOUNT</span>
-          <div className={`nav-item ${page === "profile" ? "active" : ""}`} onClick={() => { setPage("profile"); setSidebarOpen(false); }}>
+          <div className={`nav-item ${page === "profile" ? "active" : ""}`} onClick={() => { setPage("profile"); setViewedProfileUserId(null); setSidebarOpen(false); }}>
             <Icon name="user" size={16} /> My Profile
           </div>
           <div className="nav-item" onClick={signOut}>
@@ -1236,8 +1438,21 @@ export default function App() {
           {page === "exercises"   && <ExerciseLibrary exercises={exercises} />}
           {page === "routines"    && <RoutineBuilder exercises={exercises} userId={session.user.id} />}
           {page === "community"   && <CommunityRoutines userId={session.user.id} exercises={exercises} />}
-          {page === "leaderboard" && <Leaderboards session={session} />}
-          {page === "profile"     && <ProfilePage profile={profile} />}
+          {page === "leaderboard" && <Leaderboards session={session} onViewProfile={handleViewUserProfile} />}
+          {page === "profile"     && (viewedProfileUserId ? (
+            <UserProfilePage
+              viewedUserId={viewedProfileUserId}
+              currentUserId={session.user.id}
+              exercises={exercises}
+              onBack={handleBackToMyProfile}
+            />
+          ) : (
+            <ProfilePage
+              profile={profile}
+              currentUserId={session.user.id}
+              onViewUserProfile={handleViewUserProfile}
+            />
+          ))}
         </div>
       </div>
 
