@@ -26,7 +26,7 @@ export function useRoutines(userId) {
       user_id: userId,
       name: form.name,
       description: form.description,
-      exercises: form.exercises.map(e => ({ exercise_id: e.id, exercise_name: e.name })),
+      exercises: form.exercises.map(e => ({ exercise_id: e.id, exercise_name: e.name, rest_time: e.rest_time || 0 })),
       is_public: form.isPublic,
     }
     const { data, error } = await supabase.from('routines').insert(payload).select().single()
@@ -43,7 +43,7 @@ export function useRoutines(userId) {
     const payload = {
       name: form.name,
       description: form.description,
-      exercises: form.exercises.map(e => ({ exercise_id: e.id, exercise_name: e.name })),
+      exercises: form.exercises.map(e => ({ exercise_id: e.id, exercise_name: e.name, rest_time: e.rest_time || 0 })),
       is_public: form.isPublic,
     }
     const { data, error } = await supabase.from('routines').update(payload).eq('id', id).select().single()

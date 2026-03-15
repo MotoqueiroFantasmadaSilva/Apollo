@@ -121,6 +121,11 @@ function MiniChart({ data, color = "#8b5cf6" }) {
   );
 }
 
+const REST_OPTIONS = [0, 30, 60, 90, 120, 150, 180, 210, 240, 300];
+const fmtRestLabel  = s => !s ? "OFF" : s < 60 ? `${s}s` : `${Math.floor(s/60)}min${s%60 ? ` ${s%60}s` : ""}`;
+const fmtRestOption = s => s === 0 ? "No Rest" : s < 60 ? `${s}s` : `${Math.floor(s/60)}:${String(s%60).padStart(2,"0")}`;
+const fmtRestClock  = s => `${String(Math.floor(s/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`;
+
 // ─── PAGES ───────────────────────────────────────────────────────────────────
 
 function LandingPage({ onNavigate }) {
@@ -353,8 +358,9 @@ function Dashboard({ profile, workouts }) {
   );
 }
 
-function WorkoutTracker({ exercises, userId, onWorkoutSaved }) {
+function WorkoutTracker({ exercises, userId, onWorkoutSaved, onPhaseChange }) {
   const [phase, setPhase] = useState("select");
+  const changePhase = (p) => { setPhase(p); onPhaseChange?.(p); };
   const [workoutName, setWorkoutName] = useState("");
   const [selectedExercises, setSelectedExercises] = useState([]);
   const [sets, setSets] = useState({});
@@ -362,14 +368,31 @@ function WorkoutTracker({ exercises, userId, onWorkoutSaved }) {
   const [running, setRunning] = useState(false);
   const [saving, setSaving] = useState(false);
   const [apJustEarned, setApJustEarned] = useState(0);
+  const [restTimes, setRestTimes] = useState({});
+  const [activeRest, setActiveRest] = useState(null);
+  const [restPickerEx, setRestPickerEx] = useState(null);
   const timerRef = useRef(null);
+  const restTimerRef = useRef(null);
   const { saveWorkout } = useWorkouts(userId);
+  const { routines: communityRoutines, bookmarked } = useCommunityRoutines(userId);
+  const bookmarkedRoutines = communityRoutines.filter(r => bookmarked.has(r.id));
 
   useEffect(() => {
     if (running) timerRef.current = setInterval(() => setTimer(t => t + 1), 1000);
     else clearInterval(timerRef.current);
     return () => clearInterval(timerRef.current);
   }, [running]);
+
+  useEffect(() => {
+    if (!activeRest) { clearInterval(restTimerRef.current); return; }
+    restTimerRef.current = setInterval(() => {
+      setActiveRest(prev => {
+        if (!prev || prev.timeLeft <= 1) { clearInterval(restTimerRef.current); return null; }
+        return { ...prev, timeLeft: prev.timeLeft - 1 };
+      });
+    }, 1000);
+    return () => clearInterval(restTimerRef.current);
+  }, [!!activeRest]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fmt = s => `${String(Math.floor(s/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`;
 
@@ -394,7 +417,50 @@ function WorkoutTracker({ exercises, userId, onWorkoutSaved }) {
       copy[idx] = { ...copy[idx], [field]: val };
       return { ...prev, [exId]: copy };
     });
+    if (field === "done" && val === true && (restTimes[exId] || 0) > 0) {
+      clearInterval(restTimerRef.current);
+      setActiveRest({ exId, timeLeft: restTimes[exId], totalTime: restTimes[exId] });
+    }
   };
+
+  const removeSet = (exId, idx) => {
+    setSets(prev => {
+      const copy = [...prev[exId]];
+      copy.splice(idx, 1);
+      return { ...prev, [exId]: copy };
+    });
+  };
+
+  function discard() {
+    setRunning(false);
+    setActiveRest(null);
+    changePhase("select");
+    setSelectedExercises([]);
+    setSets({});
+    setTimer(0);
+    setWorkoutName("");
+    setRestTimes({});
+  }
+
+  function startFromRoutine(routine) {
+    const routineExs = (routine.exercises || []).map(re => {
+      const full = exercises.find(e => e.id === re.exercise_id);
+      return full || { id: re.exercise_id, name: re.exercise_name, muscle: "", video: "" };
+    });
+    setWorkoutName(routine.name);
+    setSelectedExercises(routineExs);
+    const initSets = {};
+    const initRest = {};
+    routine.exercises.forEach((re, i) => {
+      const ex = routineExs[i];
+      initSets[ex.id] = [{ weight: "", reps: "", done: false }];
+      initRest[ex.id] = re.rest_time || 0;
+    });
+    setSets(initSets);
+    setRestTimes(initRest);
+    changePhase("active");
+    setRunning(true);
+  }
 
   const totalVolume = selectedExercises.reduce((acc, ex) => {
     const exSets = sets[ex.id] || [];
@@ -413,7 +479,7 @@ function WorkoutTracker({ exercises, userId, onWorkoutSaved }) {
     setSaving(false);
     if (!error) {
       setApJustEarned(apEarned);
-      setPhase("done");
+      changePhase("done");
       onWorkoutSaved();
     }
   }
@@ -434,7 +500,7 @@ function WorkoutTracker({ exercises, userId, onWorkoutSaved }) {
         <div className="card" style={{ textAlign: "center" }}><div className="card-value">{selectedExercises.length}</div><div className="card-sub">Exercises</div></div>
         <div className="card" style={{ textAlign: "center" }}><div className="card-value">{Math.round(totalVolume)}</div><div className="card-sub">kg Volume</div></div>
       </div>
-      <button className="btn btn-gold btn-lg" onClick={() => { setPhase("select"); setSelectedExercises([]); setSets({}); setTimer(0); setWorkoutName(""); setApJustEarned(0); }}>
+      <button className="btn btn-gold btn-lg" onClick={() => { changePhase("select"); setSelectedExercises([]); setSets({}); setTimer(0); setWorkoutName(""); setApJustEarned(0); }}>
         START ANOTHER
       </button>
     </div>
@@ -453,6 +519,7 @@ function WorkoutTracker({ exercises, userId, onWorkoutSaved }) {
             <div className="flex gap-8 mt-4">
               <button className="btn btn-sm btn-outline" onClick={() => setRunning(r => !r)}>{running ? "PAUSE" : "RESUME"}</button>
               <button className="btn btn-sm btn-gold" onClick={handleFinish}>FINISH</button>
+              <button className="btn btn-sm" style={{ background: "rgba(255,64,81,0.15)", border: "1px solid rgba(255,64,81,0.4)", color: "var(--pink)" }} onClick={discard}>DISCARD</button>
             </div>
           </div>
         </div>
@@ -467,6 +534,10 @@ function WorkoutTracker({ exercises, userId, onWorkoutSaved }) {
             </div>
             <button className="btn btn-ghost" onClick={() => removeExercise(ex.id)}><Icon name="x" size={16} /></button>
           </div>
+          <div onClick={() => setRestPickerEx(ex.id)} style={{ display: "flex", alignItems: "center", gap: 6, color: "var(--gold)", fontSize: 13, cursor: "pointer", marginBottom: 10 }}>
+            <Icon name="clock" size={13} />
+            <span>Rest Timer: {fmtRestLabel(restTimes[ex.id] || 0)}</span>
+          </div>
           <div className="set-header"><span>#</span><span>WEIGHT (kg)</span><span>REPS</span><span>VOL</span><span></span></div>
           {(sets[ex.id] || []).map((set, idx) => (
             <div key={idx} className="set-row">
@@ -476,9 +547,14 @@ function WorkoutTracker({ exercises, userId, onWorkoutSaved }) {
               <span className="set-num" style={{ color: "var(--cyan)", fontSize: 12 }}>
                 {set.weight && set.reps ? `${(parseFloat(set.weight)*parseInt(set.reps)).toFixed(0)}kg` : "—"}
               </span>
-              <button className="btn btn-ghost" style={{ padding: 4 }} onClick={() => updateSet(ex.id, idx, "done", !set.done)}>
-                <span style={{ color: set.done ? "var(--green)" : "var(--text3)" }}><Icon name="check" size={16} /></span>
-              </button>
+              <span style={{ display: "flex", alignItems: "center", gap: 2 }}>
+                <button className="btn btn-ghost" style={{ padding: 4 }} onClick={() => updateSet(ex.id, idx, "done", !set.done)}>
+                  <span style={{ color: set.done ? "var(--green)" : "var(--text3)" }}><Icon name="check" size={16} /></span>
+                </button>
+                <button className="btn btn-ghost" style={{ padding: 4 }} onClick={() => removeSet(ex.id, idx)}>
+                  <span style={{ color: "var(--text3)" }}><Icon name="x" size={14} /></span>
+                </button>
+              </span>
             </div>
           ))}
           <button className="btn btn-outline btn-sm mt-8" onClick={() => addSet(ex.id)}><Icon name="plus" size={14} /> Add Set</button>
@@ -495,36 +571,79 @@ function WorkoutTracker({ exercises, userId, onWorkoutSaved }) {
           ))}
         </div>
       </div>
+
+      {/* Rest time picker modal */}
+      {restPickerEx && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.75)", zIndex: 300, display: "flex", alignItems: "center", justifyContent: "center" }} onClick={() => setRestPickerEx(null)}>
+          <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 16, padding: 24, minWidth: 260 }} onClick={e => e.stopPropagation()}>
+            <div style={{ fontFamily: "'Orbitron', sans-serif", fontSize: 12, letterSpacing: 1, color: "var(--text2)", marginBottom: 16 }}>SET REST TIMER</div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              {REST_OPTIONS.map(s => (
+                <button key={s} className={`btn btn-sm ${(restTimes[restPickerEx] || 0) === s ? "btn-primary" : "btn-outline"}`} onClick={() => { setRestTimes(prev => ({ ...prev, [restPickerEx]: s })); setRestPickerEx(null); }}>
+                  {fmtRestOption(s)}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Active rest timer banner */}
+      {activeRest && (
+        <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 250, background: "#13131f", borderTop: "2px solid var(--gold)", paddingBottom: 24 }}>
+          <div style={{ height: 3, background: `linear-gradient(to right, var(--gold) ${Math.round((activeRest.timeLeft / activeRest.totalTime) * 100)}%, rgba(255,215,0,0.15) 0%)` }} />
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 20, paddingTop: 18 }}>
+            <button onClick={() => setActiveRest(prev => prev ? { ...prev, timeLeft: Math.max(1, prev.timeLeft - 15) } : null)} style={{ background: "rgba(255,215,0,0.1)", border: "1px solid rgba(255,215,0,0.2)", borderRadius: 14, width: 60, height: 60, color: "var(--gold)", fontSize: 16, fontWeight: 700, cursor: "pointer" }}>-15</button>
+            <div style={{ fontFamily: "'Orbitron', sans-serif", fontSize: 44, fontWeight: 900, color: "var(--gold)", minWidth: 120, textAlign: "center", letterSpacing: 2 }}>{fmtRestClock(activeRest.timeLeft)}</div>
+            <button onClick={() => setActiveRest(prev => prev ? { ...prev, timeLeft: prev.timeLeft + 15 } : null)} style={{ background: "rgba(255,215,0,0.1)", border: "1px solid rgba(255,215,0,0.2)", borderRadius: 14, width: 60, height: 60, color: "var(--gold)", fontSize: 16, fontWeight: 700, cursor: "pointer" }}>+15</button>
+            <button onClick={() => setActiveRest(null)} style={{ background: "var(--gold)", border: "none", borderRadius: 14, padding: "14px 24px", color: "#0b0b0f", fontSize: 14, fontWeight: 700, cursor: "pointer", fontFamily: "'Orbitron', sans-serif", letterSpacing: 1 }}>Skip</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 
   return (
     <div>
-      <div className="card mb-20">
-        <div className="card-title">NEW WORKOUT SESSION</div>
-        <div className="form-group">
-          <label>Workout Name</label>
-          <input value={workoutName} onChange={e => setWorkoutName(e.target.value)} placeholder="e.g. Push Day, Leg Day..." />
-        </div>
-        <div style={{ marginBottom: 16 }}>
-          <label style={{ display: "block", fontFamily: "'Orbitron', sans-serif", fontSize: 11, letterSpacing: 1, color: "var(--text2)", marginBottom: 8, textTransform: "uppercase" }}>Select Exercises</label>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-            {exercises.map(ex => {
-              const sel = !!selectedExercises.find(e => e.id === ex.id);
-              return (
-                <button key={ex.id} className={`btn btn-sm ${sel ? "btn-primary" : "btn-outline"}`} onClick={() => sel ? removeExercise(ex.id) : addExercise(ex)}>
-                  {sel && <Icon name="check" size={12} />} {ex.name}
-                </button>
-              );
-            })}
+      <div style={{ marginBottom: 4 }}>
+        <h2 style={{ fontFamily: "'Orbitron', sans-serif", fontSize: 22, fontWeight: 900, color: "var(--text)", margin: 0 }}>
+          Workout <span style={{ color: "var(--gold)" }}>Tracker</span>
+        </h2>
+        <p style={{ color: "var(--text2)", fontSize: 13, marginTop: 6 }}>Start a new session and log your lifts.</p>
+      </div>
+
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: "36px 0 28px" }}>
+        <div style={{ width: 180, height: 180, borderRadius: "50%", background: "rgba(15,15,24,0.9)", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 28 }}>
+          <div style={{ width: 128, height: 128, borderRadius: "50%", border: "2px solid rgba(255,215,0,0.45)", boxShadow: "0 0 24px rgba(255,215,0,0.18), inset 0 0 20px rgba(255,215,0,0.06)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <svg width="52" height="52" viewBox="0 0 48 48" fill="var(--gold)">
+              <rect x="4" y="19" width="5" height="10" rx="1.5"/>
+              <rect x="9" y="13" width="7" height="22" rx="2"/>
+              <rect x="16" y="21" width="16" height="6" rx="1"/>
+              <rect x="32" y="13" width="7" height="22" rx="2"/>
+              <rect x="39" y="19" width="5" height="10" rx="1.5"/>
+            </svg>
           </div>
         </div>
-        {selectedExercises.length > 0 && (
-          <div className="mt-12">
-            <div style={{ fontSize: 13, color: "var(--text2)", marginBottom: 8 }}>Selected: <strong style={{ color: "var(--text)" }}>{selectedExercises.map(e => e.name).join(", ")}</strong></div>
-            <button className="btn btn-gold btn-lg" onClick={() => { setPhase("active"); setRunning(true); }}>
-              <Icon name="play" size={18} /> START WORKOUT
-            </button>
+        <button className="btn btn-gold btn-lg" style={{ minWidth: 200, justifyContent: "center" }} onClick={() => { setWorkoutName(""); setSelectedExercises([]); setSets({}); changePhase("active"); setRunning(true); }}>
+          <Icon name="play" size={18} /> Start Workout
+        </button>
+      </div>
+
+      <div className="card">
+        <div className="card-title">BOOKMARKED ROUTINES</div>
+        {bookmarkedRoutines.length === 0 ? (
+          <p style={{ color: "var(--text2)", fontSize: 13, margin: 0 }}>No bookmarked routines yet. Visit <strong style={{ color: "var(--text)" }}>Community</strong> to discover and bookmark routines.</p>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {bookmarkedRoutines.map(r => (
+              <button key={r.id} onClick={() => startFromRoutine(r)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 8, padding: "12px 16px", cursor: "pointer", color: "var(--text)", textAlign: "left", width: "100%" }}>
+                <span>
+                  <span style={{ fontFamily: "'Rajdhani', sans-serif", fontWeight: 600, fontSize: 15 }}>{r.name}</span>
+                  <span style={{ color: "var(--text2)", fontSize: 13, marginLeft: 8 }}>— {(r.exercises || []).length} exercises</span>
+                </span>
+                <span style={{ color: "var(--gold)" }}><Icon name="play" size={14} /></span>
+              </button>
+            ))}
           </div>
         )}
       </div>
@@ -616,8 +735,12 @@ function RoutineBuilder({ exercises, userId }) {
   const toggleExercise = (ex) => {
     setForm(prev => {
       const has = prev.exercises.find(e => e.id === ex.id);
-      return { ...prev, exercises: has ? prev.exercises.filter(e => e.id !== ex.id) : [...prev.exercises, ex] };
+      return { ...prev, exercises: has ? prev.exercises.filter(e => e.id !== ex.id) : [...prev.exercises, { ...ex, rest_time: 0 }] };
     });
+  };
+
+  const updateExRestTime = (exId, seconds) => {
+    setForm(prev => ({ ...prev, exercises: prev.exercises.map(e => e.id === exId ? { ...e, rest_time: seconds } : e) }));
   };
 
   const save = async () => {
@@ -648,6 +771,21 @@ function RoutineBuilder({ exercises, userId }) {
             })}
           </div>
         </div>
+        {form.exercises.length > 0 && (
+          <div className="mb-16">
+            <label style={{ display: "block", fontFamily: "'Orbitron', sans-serif", fontSize: 11, letterSpacing: 1, color: "var(--text2)", marginBottom: 8, textTransform: "uppercase" }}>Rest Times</label>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {form.exercises.map(ex => (
+                <div key={ex.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 12px", background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 8 }}>
+                  <span style={{ fontSize: 13, color: "var(--text)" }}>{ex.name}</span>
+                  <select value={ex.rest_time || 0} onChange={e => updateExRestTime(ex.id, parseInt(e.target.value))} style={{ background: "var(--card)", border: "1px solid var(--border)", color: "var(--gold)", borderRadius: 6, padding: "4px 8px", fontSize: 12, cursor: "pointer" }}>
+                    {REST_OPTIONS.map(s => <option key={s} value={s}>{fmtRestOption(s)}</option>)}
+                  </select>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
         <div className="flex items-center gap-8 mb-16">
           <input type="checkbox" id="pub" checked={form.isPublic} onChange={e => setForm({...form, isPublic: e.target.checked})} style={{ width: "auto" }} />
           <label htmlFor="pub" style={{ marginBottom: 0, cursor: "pointer", color: "var(--text2)", fontFamily: "Inter", textTransform: "none", fontSize: 14, letterSpacing: 0 }}>Publish to Community</label>
@@ -686,7 +824,7 @@ function RoutineBuilder({ exercises, userId }) {
               </div>
               <div className="flex gap-8">
                 <button className="btn btn-outline btn-sm" onClick={() => {
-                  const formExercises = (r.exercises || []).map(e => exercises.find(ex => ex.id === e.exercise_id) || { id: e.exercise_id, name: e.exercise_name }).filter(Boolean);
+                  const formExercises = (r.exercises || []).map(e => ({ ...(exercises.find(ex => ex.id === e.exercise_id) || { id: e.exercise_id, name: e.exercise_name }), rest_time: e.rest_time || 0 })).filter(Boolean);
                   setForm({ name: r.name, description: r.description || "", exercises: formExercises, isPublic: r.is_public });
                   setEditing(r.id);
                 }}><Icon name="edit" size={13} /> Edit</button>
@@ -984,6 +1122,8 @@ export default function App() {
   const [page, setPage] = useState("dashboard");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [toast, setToast] = useState(null);
+  const [workoutPhase, setWorkoutPhase] = useState("select");
+  const [fabHover, setFabHover] = useState(false);
   const [exercises, setExercises] = useState([]);
 
   // Fetch exercises once on mount (public table, no auth needed)
@@ -1090,7 +1230,9 @@ export default function App() {
 
         <div className="content">
           {page === "dashboard"   && <Dashboard profile={profile} workouts={workouts} />}
-          {page === "workout"     && <WorkoutTracker exercises={exercises} userId={session.user.id} onWorkoutSaved={() => { refetchWorkouts(); refreshProfile(); }} />}
+          <div style={{ display: page === "workout" ? "block" : "none" }}>
+            <WorkoutTracker exercises={exercises} userId={session.user.id} onWorkoutSaved={() => { refetchWorkouts(); refreshProfile(); }} onPhaseChange={setWorkoutPhase} />
+          </div>
           {page === "exercises"   && <ExerciseLibrary exercises={exercises} />}
           {page === "routines"    && <RoutineBuilder exercises={exercises} userId={session.user.id} />}
           {page === "community"   && <CommunityRoutines userId={session.user.id} exercises={exercises} />}
@@ -1100,6 +1242,39 @@ export default function App() {
       </div>
 
       {sidebarOpen && <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 99 }} onClick={() => setSidebarOpen(false)} />}
+
+      {page !== "workout" && (
+        <button
+          onMouseEnter={() => setFabHover(true)}
+          onMouseLeave={() => setFabHover(false)}
+          onClick={() => setPage("workout")}
+          style={{
+            position: "fixed", bottom: 32, right: 32, zIndex: 200,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            gap: fabHover ? 10 : 0,
+            background: "var(--gold)", color: "#0b0b0f", border: "none",
+            borderRadius: 28, height: 52,
+            width: fabHover ? "auto" : 52,
+            padding: fabHover ? "0 20px 0 14px" : 0,
+            cursor: "pointer", overflow: "hidden",
+            transition: "width 0.2s ease, padding 0.2s ease",
+            boxShadow: "0 4px 24px rgba(255,215,0,0.35)",
+          }}
+        >
+          <svg width="24" height="24" viewBox="0 0 48 48" fill="currentColor" style={{ flexShrink: 0 }}>
+            <rect x="4" y="19" width="5" height="10" rx="1.5"/>
+            <rect x="9" y="13" width="7" height="22" rx="2"/>
+            <rect x="16" y="21" width="16" height="6" rx="1"/>
+            <rect x="32" y="13" width="7" height="22" rx="2"/>
+            <rect x="39" y="19" width="5" height="10" rx="1.5"/>
+          </svg>
+          {fabHover && (
+            <span style={{ fontFamily: "'Orbitron', sans-serif", fontSize: 11, fontWeight: 700, letterSpacing: 1, whiteSpace: "nowrap" }}>
+              {workoutPhase === "active" ? "CONTINUE WORKOUT" : "START WORKOUT"}
+            </span>
+          )}
+        </button>
+      )}
     </div>
   );
 }
