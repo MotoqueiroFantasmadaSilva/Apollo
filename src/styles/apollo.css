@@ -246,3 +246,9 @@ textarea { resize: vertical; min-height: 80px; }
 .tab { flex: 1; text-align: center; padding: 8px; border-radius: 7px; cursor: pointer; font-family: 'Rajdhani', sans-serif; font-size: 13px; font-weight: 600; color: var(--text2); transition: all 0.2s; }
 .tab.active { background: var(--card2); color: var(--text); }
 .modal-sm { max-width: 480px; }
+
+/* Toast */
+.toast { position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 14px; background: var(--card2); border: 1px solid var(--gold); border-radius: 10px; padding: 14px 20px; color: var(--text); font-family: 'Rajdhani', sans-serif; font-size: 14px; font-weight: 500; box-shadow: 0 4px 24px rgba(0,0,0,0.5), 0 0 12px rgba(255,215,0,0.15); z-index: 9999; white-space: nowrap; animation: toast-in 0.25s ease; }
+@keyframes toast-in { from { opacity: 0; transform: translateX(-50%) translateY(16px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
+.toast-close { background: none; border: none; color: var(--text2); cursor: pointer; font-size: 14px; padding: 0; line-height: 1; }
+.toast-close:hover { color: var(--text); }

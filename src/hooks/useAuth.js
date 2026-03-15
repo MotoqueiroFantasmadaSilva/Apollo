@@ -69,7 +69,13 @@ export function useAuth() {
       password,
       options: { data: { username } },
     })
-    if (error) setAuthError(error.message)
+    if (error) {
+      const msg = error.message?.toLowerCase() ?? ""
+      if (msg.includes("rate limit") || error.status === 429)
+        setAuthError("Too many sign-up attempts. Please wait a few minutes and try again.")
+      else
+        setAuthError(error.message)
+    }
     return !error
   }
 

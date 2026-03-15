@@ -159,18 +159,36 @@ function LandingPage({ onNavigate }) {
   );
 }
 
-function AuthPage({ mode, onSignIn, onSignUp, onNavigate, authError }) {
+function Toast({ message, onClose }) {
+  useEffect(() => {
+    const t = setTimeout(onClose, 5000);
+    return () => clearTimeout(t);
+  }, [onClose]);
+
+  return (
+    <div className="toast">
+      <span>{message}</span>
+      <button className="toast-close" onClick={onClose}>✕</button>
+    </div>
+  );
+}
+
+function AuthPage({ mode, onSignIn, onSignUp, onNavigate, authError, onSignUpSuccess }) {
   const [form, setForm] = useState({ username: "", email: "", password: "" });
   const [submitting, setSubmitting] = useState(false);
 
   async function handleSubmit() {
     setSubmitting(true);
-    if (mode === "login") {
-      await onSignIn(form.email, form.password);
-    } else {
-      await onSignUp(form.email, form.password, form.username);
+    try {
+      if (mode === "login") {
+        await onSignIn(form.email, form.password);
+      } else {
+        const success = await onSignUp(form.email, form.password, form.username);
+        if (success) onSignUpSuccess();
+      }
+    } finally {
+      setSubmitting(false);
     }
-    setSubmitting(false);
   }
 
   return (
@@ -828,7 +846,7 @@ function Leaderboards({ session }) {
                   <td style={{ fontFamily: "'Orbitron', sans-serif", fontSize: 13, color: trophyColor(i) }}>#{i+1}</td>
                   <td>
                     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                      <div style={{ width: 30, height: 30, borderRadius: "50%", background: "linear-gradient(135deg, #8b5cf6, #3b82f6)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, color: "white" }}>{u.username[0]}</div>
+                      <div style={{ width: 30, height: 30, borderRadius: "50%", background: "linear-gradient(135deg, #8b5cf6, #3b82f6)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, color: "white" }}>{u.username?.[0] || "?"}</div>
                       <span style={{ fontWeight: 600, color: u.id === myId ? "var(--cyan)" : "var(--text)" }}>{u.username}{u.id === myId && " (You)"}</span>
                     </div>
                   </td>
@@ -965,6 +983,7 @@ export default function App() {
   const [authScreen, setAuthScreen] = useState("landing"); // landing | login | register
   const [page, setPage] = useState("dashboard");
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [toast, setToast] = useState(null);
   const [exercises, setExercises] = useState([]);
 
   // Fetch exercises once on mount (public table, no auth needed)
@@ -991,13 +1010,17 @@ export default function App() {
   if (!session) {
     if (authScreen === "landing") return <LandingPage onNavigate={setAuthScreen} />;
     return (
-      <AuthPage
-        mode={authScreen}
-        onSignIn={signIn}
-        onSignUp={signUp}
-        onNavigate={setAuthScreen}
-        authError={authError}
-      />
+      <>
+        {toast && <Toast message={toast} onClose={() => setToast(null)} />}
+        <AuthPage
+          mode={authScreen}
+          onSignIn={signIn}
+          onSignUp={signUp}
+          onNavigate={setAuthScreen}
+          authError={authError}
+          onSignUpSuccess={() => setToast("Confirmation link sent — check your email to activate your account.")}
+        />
+      </>
     );
   }
 
