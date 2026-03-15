@@ -251,7 +251,7 @@ function Dashboard({ profile, workouts }) {
   return (
     <div>
       <div className="card mb-20" style={{ background: "linear-gradient(135deg, rgba(139,92,246,0.12), rgba(59,130,246,0.08))", border: "1px solid rgba(139,92,246,0.3)" }}>
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between" style={{ flexWrap: "wrap", gap: 16 }}>
           <div>
             <div style={{ fontFamily: "'Orbitron', sans-serif", fontSize: 11, color: "var(--text3)", letterSpacing: 2, marginBottom: 6 }}>WELCOME BACK</div>
             <h2 style={{ fontFamily: "'Orbitron', sans-serif", fontSize: 24, fontWeight: 900, color: "var(--text)" }}>{profile?.username}</h2>
@@ -509,14 +509,14 @@ function WorkoutTracker({ exercises, userId, onWorkoutSaved, onPhaseChange }) {
   if (phase === "active") return (
     <div>
       <div className="card mb-20" style={{ background: "linear-gradient(135deg, rgba(0,230,118,0.1), rgba(59,130,246,0.08))", border: "1px solid rgba(0,230,118,0.3)" }}>
-        <div className="flex items-center justify-between">
+        <div className="workout-active-hdr">
           <div>
             <div style={{ fontFamily: "'Orbitron', sans-serif", fontSize: 20, fontWeight: 700, color: "var(--text)" }}>{workoutName || "Untitled Workout"}</div>
             <div style={{ color: "var(--text2)", fontSize: 13, marginTop: 4 }}>{selectedExercises.length} exercises · {Math.round(totalVolume)} kg volume</div>
           </div>
-          <div style={{ textAlign: "center" }}>
+          <div>
             <div style={{ fontFamily: "'Orbitron', sans-serif", fontSize: 32, fontWeight: 900, color: "var(--green)" }}>{fmt(timer)}</div>
-            <div className="flex gap-8 mt-4">
+            <div className="flex gap-8 mt-4" style={{ flexWrap: "wrap" }}>
               <button className="btn btn-sm btn-outline" onClick={() => setRunning(r => !r)}>{running ? "PAUSE" : "RESUME"}</button>
               <button className="btn btn-sm btn-gold" onClick={handleFinish}>FINISH</button>
               <button className="btn btn-sm" style={{ background: "rgba(255,64,81,0.15)", border: "1px solid rgba(255,64,81,0.4)", color: "var(--pink)" }} onClick={discard}>DISCARD</button>
@@ -590,13 +590,13 @@ function WorkoutTracker({ exercises, userId, onWorkoutSaved, onPhaseChange }) {
 
       {/* Active rest timer banner */}
       {activeRest && (
-        <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 250, background: "#13131f", borderTop: "2px solid var(--gold)", paddingBottom: 24 }}>
+        <div className="rest-banner">
           <div style={{ height: 3, background: `linear-gradient(to right, var(--gold) ${Math.round((activeRest.timeLeft / activeRest.totalTime) * 100)}%, rgba(255,215,0,0.15) 0%)` }} />
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 20, paddingTop: 18 }}>
-            <button onClick={() => setActiveRest(prev => prev ? { ...prev, timeLeft: Math.max(1, prev.timeLeft - 15) } : null)} style={{ background: "rgba(255,215,0,0.1)", border: "1px solid rgba(255,215,0,0.2)", borderRadius: 14, width: 60, height: 60, color: "var(--gold)", fontSize: 16, fontWeight: 700, cursor: "pointer" }}>-15</button>
-            <div style={{ fontFamily: "'Orbitron', sans-serif", fontSize: 44, fontWeight: 900, color: "var(--gold)", minWidth: 120, textAlign: "center", letterSpacing: 2 }}>{fmtRestClock(activeRest.timeLeft)}</div>
-            <button onClick={() => setActiveRest(prev => prev ? { ...prev, timeLeft: prev.timeLeft + 15 } : null)} style={{ background: "rgba(255,215,0,0.1)", border: "1px solid rgba(255,215,0,0.2)", borderRadius: 14, width: 60, height: 60, color: "var(--gold)", fontSize: 16, fontWeight: 700, cursor: "pointer" }}>+15</button>
-            <button onClick={() => setActiveRest(null)} style={{ background: "var(--gold)", border: "none", borderRadius: 14, padding: "14px 24px", color: "#0b0b0f", fontSize: 14, fontWeight: 700, cursor: "pointer", fontFamily: "'Orbitron', sans-serif", letterSpacing: 1 }}>Skip</button>
+          <div className="rest-banner-controls">
+            <button className="rest-btn" onClick={() => setActiveRest(prev => prev ? { ...prev, timeLeft: Math.max(1, prev.timeLeft - 15) } : null)}>-15</button>
+            <div className="rest-clock">{fmtRestClock(activeRest.timeLeft)}</div>
+            <button className="rest-btn" onClick={() => setActiveRest(prev => prev ? { ...prev, timeLeft: prev.timeLeft + 15 } : null)}>+15</button>
+            <button className="rest-skip" onClick={() => setActiveRest(null)}>Skip</button>
           </div>
         </div>
       )}
@@ -1014,7 +1014,7 @@ function ProfilePage({ profile }) {
   return (
     <div>
       <div className="card mb-20" style={{ background: "linear-gradient(135deg, rgba(170,0,255,0.15), rgba(59,130,246,0.1))", border: "1px solid rgba(170,0,255,0.3)", padding: "32px 24px" }}>
-        <div className="flex gap-20 items-center">
+        <div className="flex gap-20 items-center" style={{ flexWrap: "wrap" }}>
           <div style={{ width: 80, height: 80, borderRadius: "50%", background: `linear-gradient(135deg, ${rank.color}, #3b82f6)`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 32, fontWeight: 900, color: "white", flexShrink: 0, boxShadow: `0 0 30px ${rank.glow}` }}>
             {profile?.username?.[0]}
           </div>
