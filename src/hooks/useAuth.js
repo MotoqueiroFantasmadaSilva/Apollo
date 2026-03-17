@@ -9,9 +9,9 @@ export function useAuth() {
 
   // Effect 1: manage session via onAuthStateChange only (fires INITIAL_SESSION on mount)
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      setSession(session)
-      if (!session) {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, nextSession) => {
+      setSession(nextSession)
+      if (!nextSession) {
         setProfile(null)
         setLoading(false)
       }

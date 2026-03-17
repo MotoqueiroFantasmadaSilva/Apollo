@@ -361,7 +361,80 @@ function Dashboard({ profile, workouts }) {
   );
 }
 
-function WorkoutTracker({ exercises, userId, onWorkoutSaved, onPhaseChange }) {
+// ─── EXERCISE PICKER MODAL ───────────────────────────────────────────────────
+
+function ExercisePickerModal({ exercises, onAdd, onClose, onViewExercise, addedIds }) {
+  const [search, setSearch] = useState("");
+  const [muscleFilter, setMuscleFilter] = useState("All");
+  const muscles = ["All", ...new Set(exercises.map(e => e.muscle).filter(Boolean))];
+  const filtered = exercises.filter(ex => {
+    const matchesMuscle = muscleFilter === "All" || ex.muscle === muscleFilter;
+    const matchesSearch = ex.name.toLowerCase().includes(search.toLowerCase());
+    return matchesMuscle && matchesSearch;
+  });
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal" style={{ display: "flex", flexDirection: "column", maxHeight: "85vh" }} onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <span style={{ fontFamily: "'Orbitron', sans-serif", fontSize: 12, letterSpacing: 1, color: "var(--text2)" }}>ADD EXERCISE</span>
+          <button className="btn btn-ghost" style={{ padding: 4 }} onClick={onClose}><Icon name="x" size={16} /></button>
+        </div>
+        <div style={{ padding: "12px 24px", borderBottom: "1px solid var(--border)", flexShrink: 0 }}>
+          <input
+            autoFocus
+            placeholder="Search exercises..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            style={{ width: "100%", marginBottom: 12 }}
+          />
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {muscles.map(m => (
+              <button key={m} className={`btn btn-sm ${muscleFilter === m ? "btn-primary" : "btn-outline"}`} onClick={() => setMuscleFilter(m)}>{m}</button>
+            ))}
+          </div>
+        </div>
+        <div style={{ overflowY: "auto", flex: 1 }}>
+          {filtered.length === 0 && (
+            <div style={{ textAlign: "center", color: "var(--text3)", padding: "32px 24px" }}>No exercises found</div>
+          )}
+          {filtered.map(ex => {
+            const isAdded = addedIds?.has(ex.id);
+            return (
+              <div key={ex.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 24px", borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontFamily: "'Rajdhani', sans-serif", fontWeight: 700, fontSize: 15, color: "var(--text)" }}>{ex.name}</div>
+                  <div style={{ display: "flex", gap: 6, marginTop: 4, flexWrap: "wrap" }}>
+                    <span className="badge badge-purple">{ex.muscle}</span>
+                    {ex.difficulty && <span className="badge" style={{ background: "rgba(0,230,118,0.1)", color: "var(--green)", border: "1px solid rgba(0,230,118,0.2)" }}>{ex.difficulty}</span>}
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+                  <button
+                    className="btn btn-ghost btn-sm"
+                    title="View in Exercise Library"
+                    onClick={() => { onViewExercise(ex); onClose(); }}
+                    style={{ color: "var(--text3)" }}
+                  >
+                    <Icon name="book" size={14} />
+                  </button>
+                  <button
+                    className={`btn btn-sm ${isAdded ? "btn-primary" : "btn-outline"}`}
+                    onClick={() => onAdd(ex)}
+                  >
+                    {isAdded ? <><Icon name="check" size={13} /> Added</> : <><Icon name="plus" size={13} /> Add</>}
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function WorkoutTracker({ exercises, userId, onWorkoutSaved, onPhaseChange, onViewExercise }) {
   const [phase, setPhase] = useState("select");
   const changePhase = (p) => { setPhase(p); onPhaseChange?.(p); };
   const [workoutName, setWorkoutName] = useState("");
@@ -374,6 +447,7 @@ function WorkoutTracker({ exercises, userId, onWorkoutSaved, onPhaseChange }) {
   const [restTimes, setRestTimes] = useState({});
   const [activeRest, setActiveRest] = useState(null);
   const [restPickerEx, setRestPickerEx] = useState(null);
+  const [showExPicker, setShowExPicker] = useState(false);
   const timerRef = useRef(null);
   const restTimerRef = useRef(null);
   const { saveWorkout } = useWorkouts(userId);
@@ -456,7 +530,7 @@ function WorkoutTracker({ exercises, userId, onWorkoutSaved, onPhaseChange }) {
     const initRest = {};
     routine.exercises.forEach((re, i) => {
       const ex = routineExs[i];
-      initSets[ex.id] = [{ weight: "", reps: "", done: false }];
+      initSets[ex.id] = Array.from({ length: re.sets || 1 }, () => ({ weight: "", reps: "", done: false }));
       initRest[ex.id] = re.rest_time || 0;
     });
     setSets(initSets);
@@ -564,16 +638,21 @@ function WorkoutTracker({ exercises, userId, onWorkoutSaved, onPhaseChange }) {
         </div>
       ))}
 
-      <div className="card mt-16">
-        <div className="card-title">ADD EXERCISE</div>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-          {exercises.filter(e => !selectedExercises.find(s => s.id === e.id)).map(ex => (
-            <button key={ex.id} className="btn btn-outline btn-sm" onClick={() => addExercise(ex)}>
-              <Icon name="plus" size={12} /> {ex.name}
-            </button>
-          ))}
-        </div>
+      <div className="mt-16" style={{ textAlign: "center" }}>
+        <button className="btn btn-outline" onClick={() => setShowExPicker(true)}>
+          <Icon name="plus" size={16} /> Add Exercise
+        </button>
       </div>
+
+      {showExPicker && (
+        <ExercisePickerModal
+          exercises={exercises}
+          addedIds={new Set(selectedExercises.map(e => e.id))}
+          onAdd={(ex) => { addExercise(ex); }}
+          onClose={() => setShowExPicker(false)}
+          onViewExercise={onViewExercise}
+        />
+      )}
 
       {/* Rest time picker modal */}
       {restPickerEx && (
@@ -654,11 +733,83 @@ function WorkoutTracker({ exercises, userId, onWorkoutSaved, onPhaseChange }) {
   );
 }
 
-function ExerciseLibrary({ exercises }) {
-  const [selected, setSelected] = useState(null);
+function extractYouTubeId(src) {
+  if (!src) return null;
+  // Already an embed URL: youtube.com/embed/ID
+  const embedMatch = src.match(/youtube\.com\/embed\/([^?&]+)/);
+  if (embedMatch) return embedMatch[1];
+  // Watch URL: youtube.com/watch?v=ID
+  const watchMatch = src.match(/[?&]v=([^?&]+)/);
+  if (watchMatch) return watchMatch[1];
+  // Short URL: youtu.be/ID
+  const shortMatch = src.match(/youtu\.be\/([^?&]+)/);
+  if (shortMatch) return shortMatch[1];
+  return null;
+}
+
+function VideoFacade({ src, title }) {
+  const [active, setActive] = useState(false);
+  const videoId = extractYouTubeId(src);
+
+  if (!videoId) {
+    return (
+      <div style={{ background: "var(--bg3)", aspectRatio: "16/9", display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <span style={{ color: "var(--text3)", fontSize: 13 }}>No video available</span>
+      </div>
+    );
+  }
+
+  if (active) {
+    return (
+      <iframe
+        width="100%" height="100%"
+        style={{ border: "none", minHeight: 220, display: "block", aspectRatio: "16/9" }}
+        src={`https://www.youtube.com/embed/${videoId}?autoplay=1&rel=0`}
+        title={title}
+        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+        allowFullScreen
+      />
+    );
+  }
+
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      aria-label={`Play ${title}`}
+      onClick={() => setActive(true)}
+      onKeyDown={e => e.key === 'Enter' && setActive(true)}
+      style={{ position: "relative", aspectRatio: "16/9", cursor: "pointer", background: "var(--bg3)", overflow: "hidden" }}
+    >
+      <img
+        src={`https://img.youtube.com/vi/${videoId}/hqdefault.jpg`}
+        alt={title}
+        loading="lazy"
+        style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+      />
+      <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.25)" }}>
+        <div style={{ width: 64, height: 64, borderRadius: "50%", background: "rgba(0,0,0,0.72)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="white"><path d="M8 5v14l11-7z"/></svg>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ExerciseLibrary({ exercises, initialSelected }) {
+  const [selected, setSelected] = useState(initialSelected || null);
   const [filter, setFilter] = useState("All");
-  const muscles = ["All", ...new Set(exercises.map(e => e.muscle))];
-  const filtered = filter === "All" ? exercises : exercises.filter(e => e.muscle === filter);
+  const [search, setSearch] = useState("");
+  const muscles = ["All", ...new Set(exercises.map(e => e.muscle).filter(Boolean))];
+  const filtered = exercises.filter(e => {
+    const matchesMuscle = filter === "All" || e.muscle === filter;
+    const matchesSearch = e.name.toLowerCase().includes(search.toLowerCase());
+    return matchesMuscle && matchesSearch;
+  });
+
+  useEffect(() => {
+    if (initialSelected) setSelected(initialSelected);
+  }, [initialSelected?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (selected) return (
     <div>
@@ -683,9 +834,7 @@ function ExerciseLibrary({ exercises }) {
         </div>
         <div>
           <div className="card" style={{ padding: 0, overflow: "hidden" }}>
-            <div style={{ background: "var(--bg3)", aspectRatio: "16/9", display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <iframe width="100%" height="100%" style={{ border: "none", minHeight: 220 }} src={selected.video} title={selected.name} allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen />
-            </div>
+            <VideoFacade key={selected.id} src={selected.video} title={selected.name} />
             <div style={{ padding: 16 }}>
               <div style={{ fontSize: 13, color: "var(--text2)" }}>Video demonstration</div>
             </div>
@@ -697,11 +846,20 @@ function ExerciseLibrary({ exercises }) {
 
   return (
     <div>
-      <div className="flex gap-8 mb-20" style={{ flexWrap: "wrap" }}>
-        {muscles.map(m => (
-          <button key={m} className={`btn btn-sm ${filter === m ? "btn-primary" : "btn-outline"}`} onClick={() => setFilter(m)}>{m}</button>
-        ))}
+      <div className="mb-16">
+        <input
+          placeholder="Search exercises..."
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          style={{ width: "100%", marginBottom: 12 }}
+        />
+        <div className="flex gap-8" style={{ flexWrap: "wrap" }}>
+          {muscles.map(m => (
+            <button key={m} className={`btn btn-sm ${filter === m ? "btn-primary" : "btn-outline"}`} onClick={() => setFilter(m)}>{m}</button>
+          ))}
+        </div>
       </div>
+      {filtered.length === 0 && <div style={{ color: "var(--text3)", textAlign: "center", padding: "32px 0" }}>No exercises found</div>}
       <div className="grid-auto">
         {filtered.map(ex => (
           <div key={ex.id} className="exercise-card" onClick={() => setSelected(ex)}>
@@ -724,11 +882,12 @@ function ExerciseLibrary({ exercises }) {
   );
 }
 
-function RoutineBuilder({ exercises, userId }) {
+function RoutineBuilder({ exercises, userId, onViewExercise }) {
   const { routines, loading, createRoutine, updateRoutine, deleteRoutine } = useRoutines(userId);
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState({ name: "", description: "", exercises: [], isPublic: false });
   const [saving, setSaving] = useState(false);
+  const [showExPicker, setShowExPicker] = useState(false);
 
   const startNew = () => {
     setForm({ name: "", description: "", exercises: [], isPublic: false });
@@ -738,12 +897,16 @@ function RoutineBuilder({ exercises, userId }) {
   const toggleExercise = (ex) => {
     setForm(prev => {
       const has = prev.exercises.find(e => e.id === ex.id);
-      return { ...prev, exercises: has ? prev.exercises.filter(e => e.id !== ex.id) : [...prev.exercises, { ...ex, rest_time: 0 }] };
+      return { ...prev, exercises: has ? prev.exercises.filter(e => e.id !== ex.id) : [...prev.exercises, { ...ex, rest_time: 0, sets: 3 }] };
     });
   };
 
   const updateExRestTime = (exId, seconds) => {
     setForm(prev => ({ ...prev, exercises: prev.exercises.map(e => e.id === exId ? { ...e, rest_time: seconds } : e) }));
+  };
+
+  const updateExSets = (exId, sets) => {
+    setForm(prev => ({ ...prev, exercises: prev.exercises.map(e => e.id === exId ? { ...e, sets } : e) }));
   };
 
   const save = async () => {
@@ -767,27 +930,50 @@ function RoutineBuilder({ exercises, userId }) {
         <div className="form-group"><label>Description</label><textarea value={form.description} onChange={e => setForm({...form, description: e.target.value})} placeholder="Describe your routine..." /></div>
         <div className="mb-16">
           <label style={{ display: "block", fontFamily: "'Orbitron', sans-serif", fontSize: 11, letterSpacing: 1, color: "var(--text2)", marginBottom: 8, textTransform: "uppercase" }}>Exercises</label>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-            {exercises.map(ex => {
-              const sel = !!form.exercises.find(e => e.id === ex.id);
-              return <button key={ex.id} className={`btn btn-sm ${sel ? "btn-primary" : "btn-outline"}`} onClick={() => toggleExercise(ex)}>{sel && "✓ "}{ex.name}</button>;
-            })}
-          </div>
-        </div>
-        {form.exercises.length > 0 && (
-          <div className="mb-16">
-            <label style={{ display: "block", fontFamily: "'Orbitron', sans-serif", fontSize: 11, letterSpacing: 1, color: "var(--text2)", marginBottom: 8, textTransform: "uppercase" }}>Rest Times</label>
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {form.exercises.length > 0 && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 12 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr auto auto auto", gap: 8, padding: "4px 8px", alignItems: "center" }}>
+                <span style={{ fontSize: 11, color: "var(--text3)", fontFamily: "'Orbitron', sans-serif", letterSpacing: 1 }}>EXERCISE</span>
+                <span style={{ fontSize: 11, color: "var(--text3)", fontFamily: "'Orbitron', sans-serif", letterSpacing: 1, textAlign: "center" }}>SETS</span>
+                <span style={{ fontSize: 11, color: "var(--text3)", fontFamily: "'Orbitron', sans-serif", letterSpacing: 1, textAlign: "center" }}>REST</span>
+                <span />
+              </div>
               {form.exercises.map(ex => (
-                <div key={ex.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 12px", background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 8 }}>
-                  <span style={{ fontSize: 13, color: "var(--text)" }}>{ex.name}</span>
-                  <select value={ex.rest_time || 0} onChange={e => updateExRestTime(ex.id, parseInt(e.target.value))} style={{ background: "var(--card)", border: "1px solid var(--border)", color: "var(--gold)", borderRadius: 6, padding: "4px 8px", fontSize: 12, cursor: "pointer" }}>
+                <div key={ex.id} style={{ display: "grid", gridTemplateColumns: "1fr auto auto auto", gap: 8, padding: "8px 12px", background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 8, alignItems: "center" }}>
+                  <span style={{ fontSize: 13, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ex.name}</span>
+                  <select
+                    value={ex.sets || 3}
+                    onChange={e => updateExSets(ex.id, parseInt(e.target.value))}
+                    style={{ background: "var(--card)", border: "1px solid var(--border)", color: "var(--cyan)", borderRadius: 6, padding: "4px 8px", fontSize: 12, cursor: "pointer" }}
+                  >
+                    {[1,2,3,4,5,6,7,8].map(n => <option key={n} value={n}>{n} set{n !== 1 ? "s" : ""}</option>)}
+                  </select>
+                  <select
+                    value={ex.rest_time || 0}
+                    onChange={e => updateExRestTime(ex.id, parseInt(e.target.value))}
+                    style={{ background: "var(--card)", border: "1px solid var(--border)", color: "var(--gold)", borderRadius: 6, padding: "4px 8px", fontSize: 12, cursor: "pointer" }}
+                  >
                     {REST_OPTIONS.map(s => <option key={s} value={s}>{fmtRestOption(s)}</option>)}
                   </select>
+                  <button className="btn btn-ghost" style={{ padding: 4 }} onClick={() => toggleExercise(ex)}>
+                    <Icon name="x" size={14} />
+                  </button>
                 </div>
               ))}
             </div>
-          </div>
+          )}
+          <button className="btn btn-outline btn-sm" onClick={() => setShowExPicker(true)}>
+            <Icon name="plus" size={14} /> Add Exercise
+          </button>
+        </div>
+        {showExPicker && (
+          <ExercisePickerModal
+            exercises={exercises}
+            addedIds={new Set(form.exercises.map(e => e.id))}
+            onAdd={(ex) => toggleExercise(ex)}
+            onClose={() => setShowExPicker(false)}
+            onViewExercise={onViewExercise}
+          />
         )}
         <div className="flex items-center gap-8 mb-16">
           <input type="checkbox" id="pub" checked={form.isPublic} onChange={e => setForm({...form, isPublic: e.target.checked})} style={{ width: "auto" }} />
@@ -827,7 +1013,7 @@ function RoutineBuilder({ exercises, userId }) {
               </div>
               <div className="flex gap-8">
                 <button className="btn btn-outline btn-sm" onClick={() => {
-                  const formExercises = (r.exercises || []).map(e => ({ ...(exercises.find(ex => ex.id === e.exercise_id) || { id: e.exercise_id, name: e.exercise_name }), rest_time: e.rest_time || 0 })).filter(Boolean);
+                  const formExercises = (r.exercises || []).map(e => ({ ...(exercises.find(ex => ex.id === e.exercise_id) || { id: e.exercise_id, name: e.exercise_name }), rest_time: e.rest_time || 0, sets: e.sets || 3 })).filter(Boolean);
                   setForm({ name: r.name, description: r.description || "", exercises: formExercises, isPublic: r.is_public });
                   setEditing(r.id);
                 }}><Icon name="edit" size={13} /> Edit</button>
@@ -1321,6 +1507,12 @@ export default function App() {
   const [workoutPhase, setWorkoutPhase] = useState("select");
   const [fabHover, setFabHover] = useState(false);
   const [exercises, setExercises] = useState([]);
+  const [exerciseLibraryTarget, setExerciseLibraryTarget] = useState(null);
+
+  const handleViewExercise = (ex) => {
+    setExerciseLibraryTarget(ex);
+    setPage("exercises");
+  };
 
   const handleViewUserProfile = (userId) => {
     setViewedProfileUserId(userId);
@@ -1433,10 +1625,10 @@ export default function App() {
         <div className="content">
           {page === "dashboard"   && <Dashboard profile={profile} workouts={workouts} />}
           <div style={{ display: page === "workout" ? "block" : "none" }}>
-            <WorkoutTracker exercises={exercises} userId={session.user.id} onWorkoutSaved={() => { refetchWorkouts(); refreshProfile(); }} onPhaseChange={setWorkoutPhase} />
+            <WorkoutTracker exercises={exercises} userId={session.user.id} onWorkoutSaved={() => { refetchWorkouts(); refreshProfile(); }} onPhaseChange={setWorkoutPhase} onViewExercise={handleViewExercise} />
           </div>
-          {page === "exercises"   && <ExerciseLibrary exercises={exercises} />}
-          {page === "routines"    && <RoutineBuilder exercises={exercises} userId={session.user.id} />}
+          {page === "exercises"   && <ExerciseLibrary exercises={exercises} initialSelected={exerciseLibraryTarget} />}
+          {page === "routines"    && <RoutineBuilder exercises={exercises} userId={session.user.id} onViewExercise={handleViewExercise} />}
           {page === "community"   && <CommunityRoutines userId={session.user.id} exercises={exercises} />}
           {page === "leaderboard" && <Leaderboards session={session} onViewProfile={handleViewUserProfile} />}
           {page === "profile"     && (viewedProfileUserId ? (

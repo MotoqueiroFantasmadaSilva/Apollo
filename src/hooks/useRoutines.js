@@ -26,7 +26,7 @@ export function useRoutines(userId) {
       user_id: userId,
       name: form.name,
       description: form.description,
-      exercises: form.exercises.map(e => ({ exercise_id: e.id, exercise_name: e.name, rest_time: e.rest_time || 0 })),
+      exercises: form.exercises.map(e => ({ exercise_id: e.id, exercise_name: e.name, rest_time: e.rest_time || 0, sets: e.sets || 3 })),
       is_public: form.isPublic,
     }
     const { data, error } = await supabase.from('routines').insert(payload).select().single()
@@ -43,22 +43,30 @@ export function useRoutines(userId) {
     const payload = {
       name: form.name,
       description: form.description,
-      exercises: form.exercises.map(e => ({ exercise_id: e.id, exercise_name: e.name, rest_time: e.rest_time || 0 })),
+      exercises: form.exercises.map(e => ({ exercise_id: e.id, exercise_name: e.name, rest_time: e.rest_time || 0, sets: e.sets || 3 })),
       is_public: form.isPublic,
     }
     const { data, error } = await supabase.from('routines').update(payload).eq('id', id).select().single()
     if (!error) {
       setRoutines(prev => prev.map(r => r.id === id ? data : r))
-      if (form.isPublic) {
-        await supabase.rpc('increment_routines_created', { p_user_id: userId })
-      }
     }
     return { data, error }
   }
 
   async function deleteRoutine(id) {
+    const routine = routines.find(r => r.id === id)
     const { error } = await supabase.from('routines').delete().eq('id', id)
-    if (!error) setRoutines(prev => prev.filter(r => r.id !== id))
+    if (!error) {
+      setRoutines(prev => prev.filter(r => r.id !== id))
+      if (routine?.is_public) {
+        const { count } = await supabase
+          .from('routines')
+          .select('*', { count: 'exact', head: true })
+          .eq('user_id', userId)
+          .eq('is_public', true)
+        await supabase.from('profiles').update({ routines_created: count ?? 0 }).eq('id', userId)
+      }
+    }
     return { error }
   }
 
